@@ -5,11 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zero-Auth AI Assistant</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- JSZip for extracting ZIP files -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <!-- Marked.js for rendering Markdown -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <!-- Highlight.js for Code Syntax Highlighting -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
@@ -18,7 +15,6 @@
     ::-webkit-scrollbar-track { background: #111827; }
     ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 
-    /* Markdown styling inside chat bubbles */
     .markdown-body p { margin-bottom: 0.75rem; }
     .markdown-body p:last-child { margin-bottom: 0; }
     .markdown-body ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.75rem; }
@@ -51,7 +47,7 @@
   <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl w-full mx-auto">
     <div class="flex justify-start">
       <div class="bg-gray-800 border border-gray-700/50 text-gray-200 rounded-2xl rounded-tl-none px-4 py-3 max-w-[85%] text-sm shadow-md">
-        Hello! No sign-in or API keys needed. You can chat directly or upload a .zip file to analyze code and text files.
+        Hello! Upload a .zip file or ask a question to get started.
       </div>
     </div>
   </main>
@@ -67,7 +63,6 @@
   <!-- Input Form -->
   <footer class="p-4 border-t border-gray-800 bg-gray-950">
     <form id="chat-form" class="max-w-4xl mx-auto flex gap-2 items-end">
-      <!-- ZIP Upload Button -->
       <label class="cursor-pointer bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 p-3 rounded-xl flex items-center justify-center transition-colors" title="Upload ZIP">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -105,13 +100,13 @@
     let zipContextData = '';
     let conversationHistory = [];
 
-    // Configure marked to render safe Markdown
-    marked.setOptions({
-      breaks: true,
-      gfm: true
-    });
+    const SYSTEM_PROMPT = {
+      role: 'system',
+      content: 'You are a helpful programming assistant. Always output clean, standard Markdown. Never wrap responses in raw JSON objects or include internal reasoning objects.'
+    };
 
-    // Handle ZIP Upload & Extraction
+    marked.setOptions({ breaks: true, gfm: true });
+
     zipInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -176,42 +171,50 @@
       return bubble;
     }
 
-    // Function to parse raw input/JSON, render Markdown, format Code Blocks & Copy Buttons
-    function renderFormattedContent(element, rawText) {
-      let content = rawText.trim();
+    // Strips JSON wrappers and internal CoT reasoning
+    function sanitizeAIOutput(rawText) {
+      let text = rawText.trim();
 
-      // Check if API returned a stringified JSON object
-      if (content.startsWith('{') && content.endsWith('}')) {
+      // 1. Check if response is valid JSON
+      if (text.startsWith('{') && text.endsWith('}')) {
         try {
-          const parsed = JSON.parse(content);
-          let parts = [];
-          if (parsed.reasoning) {
-            parts.push(`> **Reasoning:**\n${parsed.reasoning}`);
-          }
-          if (parsed.content) {
-            parts.push(parsed.content);
-          } else if (parsed.text) {
-            parts.push(parsed.text);
-          } else if (parsed.message?.content) {
-            parts.push(parsed.message.content);
-          }
-          if (parts.length > 0) {
-            content = parts.join('\n\n');
-          }
-        } catch (e) {
-          // If JSON parse fails, treat as plain markdown
-        }
+          const parsed = JSON.parse(text);
+          if (parsed.content) return parsed.content;
+          if (parsed.text) return parsed.text;
+          if (parsed.message?.content) return parsed.message.content;
+          if (parsed.response) return parsed.response;
+        } catch (e) {}
       }
 
-      // Convert Markdown to HTML
-      element.innerHTML = marked.parse(content);
+      // 2. Regex fallback for unescaped/truncated JSON strings
+      if (text.includes('"reasoning":') || text.includes('"role":')) {
+        const contentMatch = text.match(/"content"\s*:\s*"([\s\S]*)"/);
+        if (contentMatch && contentMatch[1]) {
+          return contentMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+        }
+        
+        // Remove reasoning prefix if content is appended directly
+        text = text.replace(/^\{[\s\S]*?"reasoning"\s*:\s*"[\s\S]*?"\s*,\s*"?/i, '')
+                   .replace(/"\s*\}$/, '')
+                   .replace(/\\n/g, '\n')
+                   .replace(/\\"/g, '"');
+      }
 
-      // Apply Syntax Highlighting to Code Blocks
+      return text;
+    }
+
+    function renderFormattedContent(element, rawText) {
+      const cleanText = sanitizeAIOutput(rawText);
+
+      element.innerHTML = marked.parse(cleanText);
+
       element.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block);
       });
 
-      // Wrap code blocks with container header & copy button
       element.querySelectorAll('pre').forEach((pre) => {
         if (pre.parentNode.classList.contains('code-block-container')) return;
 
@@ -263,11 +266,11 @@
       if (!rawPrompt) return;
 
       const selectedModel = modelSelect.value;
-      const fullPrompt = rawPrompt + (zipContextData ? zipContextData : '');
+      const fullPromptPayload = rawPrompt + (zipContextData ? zipContextData : '');
 
-      // User Bubble
+      // Render clean message in UI (without printing raw ZIP text into user bubble)
       const userBubble = createBubble('user');
-      userBubble.textContent = rawPrompt + (zipContextData ? ' [Attached ZIP Archive]' : '');
+      userBubble.textContent = rawPrompt + (zipContextData ? ' 📁 [Attached ZIP Archive]' : '');
 
       userInput.value = '';
       userInput.style.height = 'auto';
@@ -276,18 +279,18 @@
 
       clearZipAttachment();
 
-      // Assistant Bubble Placeholder
       const aiBubble = createBubble('assistant');
       aiBubble.textContent = 'Thinking...';
 
-      conversationHistory.push({ role: 'user', content: fullPrompt });
+      // Save prompt with zip content to history for API, keep UI clean
+      conversationHistory.push({ role: 'user', content: fullPromptPayload });
 
       try {
         const response = await fetch('https://text.pollinations.ai/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: conversationHistory,
+            messages: [SYSTEM_PROMPT, ...conversationHistory],
             model: selectedModel,
             seed: Math.floor(Math.random() * 100000)
           })
@@ -297,7 +300,9 @@
 
         const replyText = await response.text();
         renderFormattedContent(aiBubble, replyText);
-        conversationHistory.push({ role: 'assistant', content: replyText });
+        
+        const cleanedReply = sanitizeAIOutput(replyText);
+        conversationHistory.push({ role: 'assistant', content: cleanedReply });
 
       } catch (error) {
         aiBubble.textContent = `Error: ${error.message || 'Could not fetch response.'}`;
