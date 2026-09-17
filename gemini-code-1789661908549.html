@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Puter AI Assistant + ZIP Upload</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://js.puter.com/v2/"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #111827; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-950">
+    <div class="flex items-center gap-3">
+      <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+      <h1 class="text-lg font-semibold tracking-wide text-gray-100">Claude AI Assistant</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <label for="model-select" class="text-xs text-gray-400 hidden sm:inline">Model:</label>
+      <select id="model-select" class="bg-gray-800 border border-gray-700 rounded-lg text-xs sm:text-sm px-3 py-1.5 focus:outline-none focus:border-indigo-500 text-gray-200">
+        <option value="claude-sonnet-5" selected>Claude Sonnet 5</option>
+        <option value="claude-fable-5-1">Claude Fable 5.1 (Reasoning)</option>
+        <option value="claude-opus-5">Claude Opus 5</option>
+        <option value="claude-opus-5-fast">Claude Opus 5 Fast</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- Messages Container -->
+  <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl w-full mx-auto">
+    <div class="flex justify-start">
+      <div class="bg-gray-800 border border-gray-700/50 text-gray-200 rounded-2xl rounded-tl-none px-4 py-3 max-w-[85%] text-sm shadow-md">
+        Hello! You can chat with me or upload a .zip file (code, docs, text) to analyze its contents.
+      </div>
+    </div>
+  </main>
+
+  <!-- Attached ZIP Chip Display -->
+  <div id="file-badge-container" class="max-w-4xl w-full mx-auto px-4 hidden">
+    <div class="inline-flex items-center gap-2 bg-indigo-950 border border-indigo-700/50 text-indigo-200 px-3 py-1 rounded-full text-xs">
+      <span id="badge-file-name">archive.zip</span>
+      <button id="remove-zip-btn" class="hover:text-red-400 font-bold ml-1">✕</button>
+    </div>
+  </div>
+
+  <!-- Input Form -->
+  <footer class="p-4 border-t border-gray-800 bg-gray-950">
+    <form id="chat-form" class="max-w-4xl mx-auto flex gap-2 items-end">
+      <!-- ZIP Upload Button -->
+      <label class="cursor-pointer bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 p-3 rounded-xl flex items-center justify-center transition-colors" title="Upload ZIP">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+        <input type="file" id="zip-input" accept=".zip" class="hidden">
+      </label>
+
+      <textarea 
+        id="user-input" 
+        rows="1" 
+        placeholder="Ask a question or explain the uploaded ZIP..."
+        class="flex-1 bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500 text-gray-100 resize-none max-h-36"
+        required></textarea>
+      
+      <button 
+        type="submit" 
+        id="send-btn"
+        class="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white font-medium px-5 py-3 rounded-xl text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+        Send
+      </button>
+    </form>
+  </footer>
+
+  <script>
+    const chatContainer = document.getElementById('chat-container');
+    const chatForm = document.getElementById('chat-form');
+    const userInput = document.getElementById('user-input');
+    const modelSelect = document.getElementById('model-select');
+    const sendBtn = document.getElementById('send-btn');
+    const zipInput = document.getElementById('zip-input');
+    const fileBadgeContainer = document.getElementById('file-badge-container');
+    const badgeFileName = document.getElementById('badge-file-name');
+    const removeZipBtn = document.getElementById('remove-zip-btn');
+
+    let zipContextData = '';
+
+    // Handle ZIP Upload & Extraction
+    zipInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const zip = await JSZip.loadAsync(file);
+        let combinedContent = `\n\n=== ATTACHED ZIP ARCHIVE: ${file.name} ===\n`;
+        let processedFiles = 0;
+
+        for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+          if (!zipEntry.dir) {
+            // Ignore common binary files to save prompt context
+            const isBinary = /\.(png|jpg|jpeg|gif|ico|pdf|zip|exe|dll|so|dylib|woff|ttf)$/i.test(relativePath);
+            if (!isBinary) {
+              const textContent = await zipEntry.async('string');
+              combinedContent += `\n--- File: ${relativePath} ---\n${textContent}\n`;
+              processedFiles++;
+            }
+          }
+        }
+
+        zipContextData = combinedContent;
+        badgeFileName.textContent = `${file.name} (${processedFiles} files parsed)`;
+        fileBadgeContainer.classList.remove('hidden');
+      } catch (err) {
+        alert('Could not parse the ZIP file: ' + err.message);
+        clearZipAttachment();
+      }
+    });
+
+    removeZipBtn.addEventListener('click', clearZipAttachment);
+
+    function clearZipAttachment() {
+      zipContextData = '';
+      zipInput.value = '';
+      fileBadgeContainer.classList.add('hidden');
+    }
+
+    // Auto-expand textarea
+    userInput.addEventListener('input', () => {
+      userInput.style.height = 'auto';
+      userInput.style.height = Math.min(userInput.scrollHeight, 150) + 'px';
+    });
+
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event('submit'));
+      }
+    });
+
+    function appendMessage(role, text = '') {
+      const wrapper = document.createElement('div');
+      wrapper.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = role === 'user' 
+        ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-none px-4 py-3 max-w-[85%] text-sm shadow-md whitespace-pre-wrap'
+        : 'bg-gray-800 border border-gray-700/50 text-gray-200 rounded-2xl rounded-tl-none px-4 py-3 max-w-[85%] text-sm shadow-md whitespace-pre-wrap';
+      
+      bubble.textContent = text;
+      wrapper.appendChild(bubble);
+      chatContainer.appendChild(wrapper);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return bubble;
+    }
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const rawPrompt = userInput.value.trim();
+      if (!rawPrompt) return;
+
+      const selectedModel = modelSelect.value;
+      const fullPrompt = rawPrompt + (zipContextData ? zipContextData : '');
+
+      // Display user message in UI
+      appendMessage('user', rawPrompt + (zipContextData ? ' [Attached ZIP File]' : ''));
+      
+      // Reset input fields
+      userInput.value = '';
+      userInput.style.height = 'auto';
+      userInput.disabled = true;
+      sendBtn.disabled = true;
+      
+      const currentZipData = zipContextData;
+      clearZipAttachment();
+
+      // Append AI response placeholder
+      const aiBubble = appendMessage('assistant', '');
+
+      try {
+        const response = await puter.ai.chat(fullPrompt, { 
+          model: selectedModel, 
+          stream: true 
+        });
+
+        for await (const part of response) {
+          if (part?.text) {
+            aiBubble.textContent += part.text;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          }
+        }
+      } catch (error) {
+        aiBubble.textContent = `Error: ${error?.message || 'Failed to generate response.'}`;
+        aiBubble.classList.add('text-red-400');
+      } finally {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>
