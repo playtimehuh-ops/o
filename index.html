@@ -260,4 +260,163 @@ function stopListening(){
   listening=false;
   if(!speaking)setState("Ready","Ready to talk");
 }
-function runCode(lang,code){const l=String(lang).toLowerCase();let html="";if(l==="html"||l==="htm")html=code;else if(l==="css")html="<!doctype html><html><head><meta charset=\"utf-8\"><style>"+code.split("</style>").join("<\\\\/style>")+"</style></head><body><div style=\"font-family:system-ui;padding:24px\">CSS preview</div></body></html>
+function runCode(lang,code){
+  const l=String(lang||"").toLowerCase();
+  const tagEnd=String.fromCharCode(60)+"/script>";
+  const styleEnd=String.fromCharCode(60)+"/style>";
+  let html="";
+  if(l==="html"||l==="htm"){
+    html=code;
+  }else if(l==="css"){
+    const safeCss=String(code).split(styleEnd).join("<\\/style>");
+    html="<!doctype html><html><head><meta charset=\"utf-8\"><style>"+safeCss+"</style></head><body><div style=\"font-family:system-ui;padding:24px\">CSS preview</div></body></html>";
+  }else{
+    const safeJs=String(code).split(tagEnd).join("<\\/script>");
+    html="<!doctype html><html><head><meta charset=\"utf-8\"><title>8op Preview</title></head><body><script>"+safeJs+"<\\/script></body></html>";
+  }
+  const bg=document.createElement("div");
+  bg.className="modalbg";
+  bg.style.display="flex";
+  bg.innerHTML="<div class=\"modal\" style=\"width:min(900px,96vw);height:min(700px,90vh);display:flex;flex-direction:column\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px\"><div><h2 style=\"margin:0\">Live Preview</h2><p style=\"margin:4px 0 0;color:#858b96;font-size:12px\">Sandboxed browser preview</p></div><button class=\"secondary\" id=\"closePreview\">Close</button></div><iframe sandbox=\"allow-scripts\" style=\"flex:1;width:100%;margin-top:12px;border:1px solid #343944;border-radius:8px;background:#fff\"></iframe></div>";
+  document.body.appendChild(bg);
+  bg.querySelector("#closePreview").onclick=function(){bg.remove()};
+  bg.querySelector("iframe").srcdoc=html;
+}
+function wireCode(root){
+  root.querySelectorAll(".code-btn.run").forEach(function(b){
+    b.onclick=function(){runCode(b.dataset.lang,decodeURIComponent(b.dataset.code))};
+  });
+  root.querySelectorAll(".codecopy").forEach(function(b){
+    b.onclick=function(){
+      navigator.clipboard.writeText(decodeURIComponent(b.dataset.code)).then(function(){
+        b.textContent="Copied";
+        setTimeout(function(){b.textContent="Copy"},900);
+      }).catch(function(){
+        b.textContent="Copy failed";
+        setTimeout(function(){b.textContent="Copy"},900);
+      });
+    };
+  });
+}
+function newConversation(){
+  stopSpeaking();
+  stopListening();
+  messages=[];
+  files=[];
+  renderChips();
+  $("#messages").innerHTML="<div class=\"welcome\" id=\"welcome\"><h1>Talk to 8op.</h1><p>Speak naturally, ask questions, send code, attach files, or just have a conversation. 8op is made by gs9h.</p></div>";
+  $("#transcript").textContent="";
+  setState("Ready","Ready to talk");
+}
+function testVoice(){
+  if(!("speechSynthesis" in window)){
+    setState("Ready","Text-to-speech is unavailable");
+    return;
+  }
+  speak("Hi. I’m 8op. This is a voice test.");
+}
+function initVoice(){
+  if(!("speechSynthesis" in window)){
+    $("#voiceSelect").innerHTML="<option value=\"\">Speech voices unavailable</option>";
+    return;
+  }
+  loadVoices();
+  if("onvoiceschanged" in speechSynthesis)speechSynthesis.onvoiceschanged=loadVoices;
+}
+$("#send").onclick=function(){send($("#input").value.trim())};
+$("#input").onkeydown=function(e){
+  if(e.key==="Enter"&&!e.shiftKey){
+    e.preventDefault();
+    send($("#input").value.trim());
+  }
+};
+$("#attach").onclick=function(){$("#file").click()};
+$("#file").onchange=function(e){
+  files.push.apply(files,Array.from(e.target.files||[]));
+  renderChips();
+  e.target.value="";
+};
+$("#drop").onclick=function(){$("#file").click()};
+$("#drop").ondragover=function(e){e.preventDefault()};
+$("#drop").ondrop=function(e){
+  e.preventDefault();
+  files.push.apply(files,Array.from(e.dataTransfer.files||[]));
+  renderChips();
+};
+$("#mic").onclick=function(){
+  if(recorder&&recorder.state==="recording")stopListening();
+  else startListening();
+};
+$("#stopVoice").onclick=function(){
+  stopSpeaking();
+  if(recorder&&recorder.state==="recording")stopListening();
+};
+$("#new").onclick=newConversation;
+$("#testVoice").onclick=testVoice;
+$("#resetVoice").onclick=function(){
+  stopSpeaking();
+  selectedVoiceName="";
+  speakRate=.98;
+  localStorage.removeItem("8op_voice");
+  localStorage.removeItem("8op_rate");
+  $("#rate").value=speakRate;
+  $("#rateValue").textContent=speakRate.toFixed(2)+"×";
+  loadVoices();
+  setState("Ready","Voice settings reset");
+};
+$("#voiceSelect").onchange=function(e){
+  selectedVoiceName=e.target.value;
+  localStorage.setItem("8op_voice",selectedVoiceName);
+};
+$("#rate").oninput=function(e){
+  speakRate=Number(e.target.value)||.98;
+  $("#rateValue").textContent=speakRate.toFixed(2)+"×";
+  localStorage.setItem("8op_rate",String(speakRate));
+  if(speaking)speak("This is your new speaking speed.");
+};
+$("#autoSpeak").onchange=function(e){
+  autoSpeak=!!e.target.checked;
+  localStorage.setItem("8op_auto_speak",autoSpeak?"1":"0");
+};
+$("#handsFree").onchange=function(e){
+  handsFree=!!e.target.checked;
+  localStorage.setItem("8op_hands_free",handsFree?"1":"0");
+  if(handsFree&&!speaking&&!listening)startListening();
+  if(!handsFree&&listening)stopListening();
+};
+$("#saveInstructions").onclick=function(){
+  instructions=$("#instructions").value;
+  localStorage.setItem("8op_instructions",instructions);
+  setState("Ready","Personality saved");
+};
+$("#voiceNav").onclick=function(){
+  $("#panel").scrollTo({top:0,behavior:"smooth"});
+  $("#voiceSelect").focus();
+};
+$("#knowledgeNav").onclick=function(){
+  $("#panel").scrollTo({top:$("#panel").scrollHeight,behavior:"smooth"});
+};
+$("#settingsBtn").onclick=function(){
+  $("#panel").scrollTo({top:0,behavior:"smooth"});
+};
+$("#addKnowledge").onclick=function(){
+  const name=prompt("Knowledge name","New knowledge");
+  if(name===null)return;
+  const text=prompt("Paste private knowledge for 8op","");
+  if(text===null)return;
+  knowledge.push({name:name.trim()||"Untitled",text:text});
+  localStorage.setItem("8op_knowledge",JSON.stringify(knowledge));
+  renderKnowledge();
+};
+renderChips();
+renderKnowledge();
+initVoice();
+setState("Ready","Ready to talk");
+window.addEventListener("beforeunload",function(){
+  stopSpeaking();
+  stopListening();
+});
+</script></body></html>
+
+<!-- Vercel deployment trigger -->
+<!-- deployment heartbeat -->
