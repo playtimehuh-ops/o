@@ -8,13 +8,11 @@ $('#settings').onclick=settings;$('#settingsNav').onclick=settings;$('#editInstr
 function esc(s){return String(s).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]))}
 function md(s){
   const blocks=[];
+  const bt=String.fromCharCode(96);
   let input=String(s).replace(/\r\n?/g,'\n');
-  input=input.replace(/\\([*<>])/g,'$1');
-  input=input.split('```').join('```');
-
-  const fence=```[ \t]*([A-Za-z0-9_+#.-]+)?[ \t]*(?:\n|[ \t]+)?([\s\S]*?)```/g;
+  input=input.replace(/\\([`*<>])/g,'$1');
+  const fence=new RegExp(bt+bt+bt+'[ \\t]*([A-Za-z0-9_+#.-]+)?[ \\t]*(?:\\n|[ \\t]+)?([\\s\\S]*?)'+bt+bt+bt,'g');
   let last=0,out='',m;
-
   while((m=fence.exec(input))){
     out+=esc(input.slice(last,m.index));
     const id='@@CODE'+blocks.length+'@@';
@@ -22,13 +20,13 @@ function md(s){
     out+=id;
     last=fence.lastIndex;
   }
-
   out+=esc(input.slice(last));
   out=out.replace(/@@CODE(\d+)@@/g,(m,i)=>{
     const x=blocks[+i];
     return '<pre><div class="codehead"><span>'+esc(x.lang)+'</span><button class="codecopy" data-code="'+encodeURIComponent(x.code)+'">Copy</button></div><code>'+esc(x.code)+'</code></pre>';
   });
-  out=out.replace(/`([^`]+?)`/g,'<code>$1</code>');
+  const inline=new RegExp(bt+'([^'+bt+'\\n]+?)'+bt,'g');
+  out=out.replace(inline,'<code>$1</code>');
   out=out.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   out=out.split(/\n\n+/).map(x=>x.trim()?'<p>'+x.replace(/\n/g,'<br>')+'</p>':'').join('');
   return out;
