@@ -61,7 +61,84 @@ function speak(text){if(!("speechSynthesis" in window))return;speechSynthesis.ca
 function stopSpeaking(){if("speechSynthesis" in window)speechSynthesis.cancel();speaking=false;setState("Ready","Ready to talk")}
 function pickVoice(list){const prefs=["Ava","Jenny","Aria","Sonia","Ryan","Guy","Natural","Online","Google US English"];for(const p of prefs){const hit=list.find(function(v){return (v.name+" "+v.lang).toLowerCase().includes(p.toLowerCase())});if(hit)return hit}return list.find(function(v){return /^en(-|_)/i.test(v.lang)})||list[0]}
 function loadVoices(){if(!("speechSynthesis" in window))return;voiceOptions=speechSynthesis.getVoices();const select=$("#voiceSelect");select.innerHTML="";if(!voiceOptions.length){const o=document.createElement("option");o.textContent="Browser voice loading…";o.value="";select.appendChild(o);return}voiceOptions.slice().sort(function(a,b){return (/en/i.test(a.lang)?0:1)-(/en/i.test(b.lang)?0:1)||a.name.localeCompare(b.name)}).forEach(function(v){const o=document.createElement("option");o.value=v.name;o.textContent=v.name+" · "+v.lang;select.appendChild(o)});if(!selectedVoiceName||!voiceOptions.some(function(v){return v.name===selectedVoiceName})){const best=pickVoice(voiceOptions);selectedVoiceName=best?best.name:"";localStorage.setItem("8op_voice",selectedVoiceName)}select.value=selectedVoiceName}
-function startListening(){if(speaking)stopSpeaking();if(!recognition){const C=window.SpeechRecognition||window.webkitSpeechRecognition;if(!C){setState("Ready","Voice input is not supported here");$("#transcript").textContent="Try a recent Chrome or Edge browser.";return}recognition=new C();recognition.lang="en-US";recognition.interimResults=true;recognition.continuous=false;recognition.onstart=function(){listening=true;setState("Listening","Listening…");$("#transcript").textContent=""};recognition.onresult=function(e){let finalText="",partial="";for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)finalText+=t;else partial+=t}$("#transcript").textContent=finalText||partial;if(finalText)recognition._finalText=(recognition._finalText||"")+finalText};recognition.onerror=function(e){listening=false;setState("Ready",e.error==="not-allowed"?"Microphone permission was blocked":"Voice input stopped")};recognition.onend=function(){const t=(recognition._finalText||"").trim();recognition._finalText="";listening=false;if(t)send(t);else if(!speaking)setState("Ready","Ready to talk")}}recognition._finalText="";try{recognition.start()}catch(_){}}
+async function startListening(){
+  if(speaking)stopSpeaking();
+  if(!recognition){
+    const C=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!C){
+      setState("Ready","Voice input is not supported");
+      $("#transcript").textContent="Speech recognition is unavailable in this browser.";
+      return;
+    }
+    recognition=new C();
+    recognition.lang=/^ar/i.test(navigator.language)?"ar-SA":"en-US";
+    recognition.interimResults=true;
+    recognition.continuous=false;
+    recognition.maxAlternatives=1;
+    recognition.onstart=function(){
+      listening=true;
+      setState("Listening","Listening…");
+      $("#transcript").textContent="";
+    };
+    recognition.onresult=function(e){
+      let finalText="",partial="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t=e.results[i][0].transcript;
+        if(e.results[i].isFinal)finalText+=t;
+        else partial+=t;
+      }
+      $("#transcript").textContent=finalText||partial;
+      if(finalText)recognition._finalText=(recognition._finalText||"")+finalText;
+    };
+    recognition.onerror=function(e){
+      listening=false;
+      const messages={
+        "not-allowed":"Microphone permission was blocked. Allow microphone access for 8op in Edge.",
+        "service-not-allowed":"Speech recognition service is blocked by the browser.",
+        "audio-capture":"No microphone was available.",
+        "no-speech":"I didn't hear anything.",
+        "network":"Speech recognition could not reach its speech service.",
+        "language-not-supported":"That speech language is not supported here."
+      };
+      const msg=messages[e.error]||("Voice error: "+e.error);
+      setState("Ready",msg);
+      $("#transcript").textContent=msg;
+    };
+    recognition.onend=function(){
+      const t=(recognition._finalText||"").trim();
+      recognition._finalText="";
+      listening=false;
+      if(t)send(t);
+      else if(!speaking)setState("Ready","Ready to talk");
+    };
+  }
+
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      stream.getTracks().forEach(function(track){track.stop()});
+    }catch(e){
+      const msg=e&&e.name==="NotAllowedError"?"Allow microphone access for 8op in Edge, then press the mic again.":"8op could not access the microphone.";
+      setState("Ready",msg);
+      $("#transcript").textContent=msg;
+      return;
+    }
+  }
+
+  recognition._finalText="";
+  $("#transcript").textContent="";
+  try{
+    recognition.start();
+  }catch(e){
+    if(e&&e.name==="InvalidStateError"){
+      try{recognition.stop()}catch(_){}
+      setTimeout(function(){try{recognition.start()}catch(_){}} ,150);
+    }else{
+      setState("Ready","Could not start voice input.");
+      $("#transcript").textContent=e.message||"Could not start voice input.";
+    }
+  }
+}
 function stopListening(){if(recognition){try{recognition.stop()}catch(_){}}listening=false;if(!speaking)setState("Ready","Ready to talk")}
 function runCode(lang,code){const l=String(lang).toLowerCase();let html="";if(l==="html"||l==="htm")html=code;else if(l==="css")html="<!doctype html><html><head><meta charset=\"utf-8\"><style>"+code.split("</style>").join("<\\\\/style>")+"</style></head><body><div style=\"font-family:system-ui;padding:24px\">CSS preview</div></body></html>";else html="<!doctype html><html><head><meta charset=\"utf-8\"><title>8op Preview</title></head><body><script>"+code.split("<\\/script>").join("<\\\\/script>")+"<\\\\/script></body></html>";const bg=document.createElement("div");bg.className="modalbg";bg.style.display="flex";bg.innerHTML="<div class=\"modal\" style=\"width:min(920px,96vw);height:min(720px,90vh);display:flex;flex-direction:column\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:12px\"><div><h2 style=\"margin:0\">Live preview</h2><p style=\"margin:4px 0 0\">Sandboxed browser preview</p></div><button class=\"secondary\" id=\"closePreview\">Close</button></div><iframe sandbox=\"allow-scripts\" style=\"flex:1;width:100%;margin-top:12px;border:1px solid #343944;border-radius:8px;background:#fff\"></iframe></div>";document.body.appendChild(bg);bg.querySelector("#closePreview").onclick=function(){bg.remove()};bg.querySelector("iframe").srcdoc=html}
 function modal(title,body,save){$("#modal").innerHTML="<h2>"+title+"</h2>"+body+"<div class=\"actions\"><button class=\"secondary\" id=\"modalClose\">Cancel</button><button class=\"primary\" id=\"modalSave\">Save</button></div>";$("#modalbg").style.display="flex";$("#modalClose").onclick=function(){$("#modalbg").style.display="none"};$("#modalSave").onclick=function(){save();$("#modalbg").style.display="none"}}
