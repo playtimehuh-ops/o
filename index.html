@@ -68,9 +68,9 @@ function speak(text){
   const clean=String(text)
     .replace(new RegExp(bt+bt+bt+"[\\s\\S]*?"+bt+bt+bt,"g"),"Code block omitted.")
     .replace(new RegExp(bt+"([^"+bt+"]+)"+bt,"g"),"$1")
-    .replace(/https?:\\/\\/\\S+/g,"link")
-    .replace(/[#*_>\\[\\]]/g,"")
-    .replace(/\\n{2,}/g,"\\n")
+    .replace(/https?:\/\/\S+/g,"link")
+    .replace(/[#*_>\[\]]/g,"")
+    .replace(/\n{2,}/g,"\n")
     .trim();
   if(!clean){setState("Ready","Ready to talk");return;}
   const parts=[];
