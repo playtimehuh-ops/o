@@ -33,18 +33,26 @@ function md(s){
 }
 function runCode(lang,code){
   const l=lang.toLowerCase();
+  const tagEnd=String.fromCharCode(60)+'/script>';
+  const styleEnd=String.fromCharCode(60)+'/style>';
   let html='';
-  if(l==='html'||l==='htm') html=code;
-  else if(l==='css') html='<!doctype html><html><head><style>'+code.replace(/<\\/style/gi,'<\\/style')+'</style></head><body><div style="font-family:system-ui;padding:24px">CSS preview</div></body></html>';
-  else html='<!doctype html><html><head><meta charset="utf-8"><title>Forge Preview</title></head><body><script>'+code.replace(/<\\/script/gi,'<\\/script')+'<\\/script></body></html>';
-  const bg=document.createElement('div');bg.className='modalbg';bg.style.display='flex';
-  bg.innerHTML='<div class="modal" style="width:min(900px,96vw);height:min(700px,90vh);display:flex;flex-direction:column"><div style="display:flex;align-items:center;justify-content:space-between"><h2 style="margin:0">Live Preview</h2><button class="secondary" id="closePreview">Close</button></div><iframe sandbox="allow-scripts" style="flex:1;width:100%;margin-top:12px;border:1px solid #343944;border-radius:8px;background:#fff"></iframe></div>';
+  if(l==='html'||l==='htm'){
+    html=code;
+  }else if(l==='css'){
+    const safeCss=code.split(styleEnd).join('<\\/style>');
+    html='<!doctype html><html><head><style>'+safeCss+'</style></head><body><div style="font-family:system-ui;padding:24px">CSS preview</div></body></html>';
+  }else{
+    const safeJs=code.split(tagEnd).join('<\\/script>');
+    html='<!doctype html><html><head><meta charset="utf-8"><title>Forge Preview</title></head><body><script>'+safeJs+'<\\/script></body></html>';
+  }
+  const bg=document.createElement('div');
+  bg.className='modalbg';
+  bg.style.display='flex';
+  bg.innerHTML='<div class="modal" style="width:min(900px,96vw);height:min(700px,90vh);display:flex;flex-direction:column"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div><h2 style="margin:0">Live Preview</h2><p style="margin:4px 0 0;color:#858b96;font-size:12px">Sandboxed browser preview</p></div><button class="secondary" id="closePreview">Close</button></div><iframe sandbox="allow-scripts" style="flex:1;width:100%;margin-top:12px;border:1px solid #343944;border-radius:8px;background:#fff"></iframe></div>';
   document.body.appendChild(bg);
   bg.querySelector('#closePreview').onclick=()=>bg.remove();
-  const frame=bg.querySelector('iframe');
-  frame.srcdoc=html;
-}
-function wireCopy(root){root.querySelectorAll('.coderun').forEach(b=>b.onclick=()=>runCode(b.dataset.lang,decodeURIComponent(b.dataset.code)));root.querySelectorAll('.codecopy').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(decodeURIComponent(b.dataset.code));b.textContent='Copied';setTimeout(()=>b.textContent='Copy',900)})}
+  bg.querySelector('iframe').srcdoc=html;
+}function wireCopy(root){root.querySelectorAll('.coderun').forEach(b=>b.onclick=()=>runCode(b.dataset.lang,decodeURIComponent(b.dataset.code)));root.querySelectorAll('.codecopy').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(decodeURIComponent(b.dataset.code));b.textContent='Copied';setTimeout(()=>b.textContent='Copy',900)})}
 function add(role,text){$('#welcome')?.remove();let e=document.createElement('div');e.className='msg '+role;e.innerHTML='<div class="avatar">'+(role==='user'?'You':'◆')+'</div><div><div class="label">'+(role==='user'?'You':'Forge AI')+'</div><div class="body"></div></div>';let body=e.querySelector('.body');body.innerHTML=role==='assistant'?md(text):esc(text).replace(/\n/g,'<br>');wireCopy(e);$('#messages').appendChild(e);$('#messages').scrollTop=$('#messages').scrollHeight;return body}
 function renderChips(){$('#chips').innerHTML=files.map((f,i)=>'<div class="chip">'+f.name+' <button data-i="'+i+'">×</button></div>').join('');document.querySelectorAll('.chip button').forEach(b=>b.onclick=()=>{files.splice(+b.dataset.i,1);renderChips()})}function renderKnowledge(){$('#knowledge').innerHTML=knowledge.map((x,i)=>'<div class="item"><strong>'+x.name.replace(/[<>&]/g,'')+'</strong><small>'+x.text.slice(0,160).replace(/[<>&]/g,'')+'…</small><button data-i="'+i+'" style="margin-top:7px;background:none;border:0;color:#888">Remove</button></div>').join('');document.querySelectorAll('.item button').forEach(b=>b.onclick=()=>{knowledge.splice(+b.dataset.i,1);localStorage.setItem('forge_knowledge',JSON.stringify(knowledge));renderKnowledge()})}renderKnowledge();
 async function part(f){if(f.type.startsWith('image/')){return new Promise(r=>{let fr=new FileReader();fr.onload=()=>r({type:'image_url',image_url:{url:fr.result}});fr.readAsDataURL(f)})}let t=await f.text();return {type:'text',text:'[File '+f.name+']\n'+t.slice(0,50000)}}
