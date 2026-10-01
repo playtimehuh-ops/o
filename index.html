@@ -37,3 +37,5 @@ async function send(){let text=$('#input').value.trim();if(!text&&!files.length)
 $('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};$('#attach').onclick=()=>$('#file').click();$('#file').onchange=e=>{files.push(...e.target.files);renderChips()};$('#drop').onclick=()=>$('#file').click();$('#drop').ondragover=e=>e.preventDefault();$('#drop').ondrop=e=>{e.preventDefault();files.push(...e.dataTransfer.files);renderChips()};$('#clear').onclick=()=>{messages=[];$('#messages').innerHTML='<div class="welcome" id="welcome"><h1>Build with AI.</h1><p>Chat with Kimi K3, attach files and images, add your own knowledge, and shape the assistant however you want.</p></div>'};$('#new').onclick=()=>$('#clear').click();$('#knowledgeNav').onclick=()=>document.querySelector('.right').scrollIntoView({behavior:'smooth'});
 </script></body></html>
 <!-- Vercel deployment trigger -->
+
+<!-- deployment heartbeat -->
