@@ -8,19 +8,24 @@ $('#settings').onclick=settings;$('#settingsNav').onclick=settings;$('#editInstr
 function esc(s){return String(s).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]))}
 function md(s){
   const blocks=[];
-  const marker='@@CODE_BLOCK_';
-  let out=String(s).replace(/\`\`\`(?:([\\w+-]+)\\s*)?\\n?([\\s\\S]*?)\`\`\`/g,(m,lang,code)=>{
-    const id=marker+blocks.length+'@@';
-    blocks.push({id,lang:lang||'code',code:code.replace(/^\\n|\\n$/g,'')});
-    return id;
-  });
-  out=esc(out);
-  out=out.replace(/@@CODE_BLOCK_(\\d+)@@/g,(m,i)=>{
+  const input=String(s).replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n');
+  const fence=/\`{3}\\s*([A-Za-z0-9_+-]*)?\\s*([\\s\\S]*?)\`{3}/g;
+  let last=0, out='';
+  let m;
+  while((m=fence.exec(input))){
+    out+=esc(input.slice(last,m.index));
+    const id='@@CODE'+blocks.length+'@@';
+    blocks.push({id,lang:(m[1]||'code').trim(),code:m[2].replace(/^\\n/,'').replace(/\\n$/,'')});
+    out+=id;
+    last=fence.lastIndex;
+  }
+  out+=esc(input.slice(last));
+  out=out.replace(/@@CODE(\\d+)@@/g,(m,i)=>{
     const x=blocks[+i];
     return '<pre><div class="codehead"><span>'+esc(x.lang)+'</span><button class="codecopy" data-code="'+encodeURIComponent(x.code)+'">Copy</button></div><code>'+esc(x.code)+'</code></pre>';
   });
-  out=out.replace(/\`([^\`]+)\`/g,'<code>$1</code>');
-  out=out.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  out=out.replace(/\`([^\`\\n]+)\`/g,'<code>$1</code>');
+  out=out.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
   out=out.split(/\\n\\n+/).map(x=>x.trim()?'<p>'+x.replace(/\\n/g,'<br>')+'</p>':'').join('');
   return out;
 }
