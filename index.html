@@ -44,6 +44,7 @@
 const $=function(s){return document.querySelector(s)},bt=String.fromCharCode(96);
 let instructions=localStorage.getItem("8op_instructions")||"",knowledge=JSON.parse(localStorage.getItem("8op_knowledge")||"[]"),files=[],messages=[],recognition=null,listening=false,speaking=false,voiceOptions=[];
 let recorder=null,recordStream=null,recordChunks=[],whisper=null,whisperLoading=null,recordTimer=null;
+let speechQueue=[],speechToken=0;
 let selectedVoiceName=localStorage.getItem("8op_voice")||"",speakRate=Number(localStorage.getItem("8op_rate")||"0.98"),autoSpeak=localStorage.getItem("8op_auto_speak")!=="0",handsFree=localStorage.getItem("8op_hands_free")==="1";
 $("#instructions").value=instructions;$("#rate").value=speakRate;$("#rateValue").textContent=speakRate.toFixed(2)+"×";$("#autoSpeak").checked=autoSpeak;$("#handsFree").checked=handsFree;
 function setState(state,text){$("#voiceState").textContent=text;$("#topStatus").textContent=state;$("#orb").className="orb "+state.toLowerCase();$("#orb").textContent=state==="Listening"?"8L":state==="Thinking"?"8…":state==="Speaking"?"8S":"8OP";$("#mic").classList.toggle("active",state==="Listening")}
